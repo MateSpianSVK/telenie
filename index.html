@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RD Čereňany - telenie</title>
+    
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    <link rel="apple-touch-icon" href="https://drive.google.com/uc?export=view&id=1gNFO01MsJglyO5i_tQVZY0pvdrc-PAYH">
+
+    <style>
+        body { 
+            font-family: 'Segoe UI', sans-serif; 
+            background: #d4edda url('https://drive.google.com/uc?export=view&id=1gNFO01MsJglyO5i_tQVZY0pvdrc-PAYH') no-repeat center center fixed; 
+            background-size: cover;
+            padding: 10px; color: #333; margin: 0;
+        }
+        .container { 
+            max-width: 650px; margin: 10px auto; background: rgba(255, 255, 255, 0.96); 
+            padding: 20px; border-radius: 15px; box-shadow: 0 4px 20px rgba(0,0,0,0.4); 
+        }
+        h2, h3 { text-align: center; color: #1a5276; margin-top: 0; border-bottom: 2px solid #1a5276; padding-bottom: 10px; }
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
+        .stat-card { background: #f0f7ff; padding: 12px; border-radius: 8px; text-align: center; border: 1px solid #cce5ff; }
+        .stat-card span { font-size: 24px; font-weight: bold; color: #1a5276; }
+        .summary-title { margin: 20px 0 5px 0; color: #1a5276; font-weight: bold; font-size: 1.1em; border-top: 1px solid #eee; padding-top: 15px; }
+        .history-summary { background: #fff; border: 1px solid #ddd; border-radius: 8px; overflow: hidden; margin-bottom: 20px; font-size: 0.85em; }
+        .summary-row { display: grid; grid-template-columns: 2fr 1fr 1fr 1.2fr; border-bottom: 1px solid #eee; padding: 8px; }
+        .year-header { background: #e9ecef; font-weight: bold; text-align: center; display: block; padding: 4px; color: #1a5276; }
+        .form-group { margin-bottom: 10px; }
+        label { display: block; margin-bottom: 3px; font-weight: bold; font-size: 13px; }
+        input, select { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; font-size: 16px; }
+        .btn-save { width: 100%; padding: 14px; background-color: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold; margin-bottom: 8px; }
+        .btn-export { width: 100%; padding: 10px; background-color: #34495e; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; margin-bottom: 5px; }
+        .table-container { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; background: white; font-size: 12px; min-width: 400px; }
+        th, td { border: 1px solid #dee2e6; padding: 8px; text-align: center; }
+        th { background-color: #f8f9fa; }
+        .male { color: #007bff; font-weight: bold; }
+        .female { color: #e83e8c; font-weight: bold; }
+        .delete-btn { background-color: #dc3545; color: white; border: none; padding: 5px 8px; border-radius: 4px; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>RD Čereňany - telenie</h2>
+
+    <div class="stats-grid">
+        <div class="stat-card"><h4>Celkom Býčkov</h4><span id="countBycek">0</span></div>
+        <div class="stat-card"><h4>Celkom Jalovičiek</h4><span id="countJalovicka">0</span></div>
+    </div>
+    
+    <div class="form-group">
+        <label>Dátum otelenia:</label>
+        <input type="date" id="datum">
+    </div>
+    <div class="form-group">
+        <label>Číslo matky:</label>
+        <input type="text" id="cisloMatky" placeholder="Ušné číslo">
+    </div>
+    <div style="display: flex; gap: 5px; margin-bottom: 10px;">
+        <div style="flex: 1;">
+            <label>Matka:</label>
+            <select id="typMatky"><option value="Krava">Krava</option><option value="Jalovička">Jalovička</option></select>
+        </div>
+        <div style="flex: 1;">
+            <label>Teľa:</label>
+            <select id="pohlavieTeliatka"><option value="Býček">♂ Býček</option><option value="Jalovička">♀ Jalovička</option></select>
+        </div>
+    </div>
+    <div class="form-group">
+        <label>Pomoc pri telení:</label>
+        <input type="text" id="pomoc" placeholder="Meno asistenta">
+    </div>
+
+    <button class="btn-save" id="saveBtn">Uložiť do online databázy</button>
+    <button class="btn-export" onclick="exportujCSV()">Export do Excelu (CSV)</button>
+
+    <div class="summary-title">Mesačné prehľady:</div>
+    <div id="summaryContent" class="history-summary"></div>
+
+    <h3>Zoznam záznamov</h3>
+    <div class="table-container">
+        <table id="tabulkaZaznamov">
+            <thead><tr><th>Dátum</th><th>Matka</th><th>Teľa</th><th>Pomoc</th><th></th></tr></thead>
+            <tbody id="teloTabulky"></tbody>
+        </table>
+    </div>
+</div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, query, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyAm3OYkPyezf9E7yD7SNfq5GMAFiYD4Kqs",
+        authDomain: "rd-cerenany-telenie.firebaseapp.com",
+        projectId: "rd-cerenany-telenie",
+        storageBucket: "rd-cerenany-telenie.firebasestorage.app",
+        messagingSenderId: "512669371406",
+        appId: "1:512669371406:web:0c9ab18846ea2197a1005f"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const colRef = collection(db, "otelenia");
+
+    document.getElementById('datum').valueAsDate = new Date();
+    const mesiaceSk = ["Január", "Február", "Marec", "Apríl", "Máj", "Jún", "Júl", "August", "September", "Október", "November", "December"];
+
+    // UKLADANIE DÁT
+    document.getElementById('saveBtn').addEventListener('click', async () => {
+        const datum = document.getElementById('datum').value;
+        const typMatky = document.getElementById('typMatky').value;
+        const cisloMatky = document.getElementById('cisloMatky').value;
+        const pohlavieTeliatka = document.getElementById('pohlavieTeliatka').value;
+        const pomoc = document.getElementById('pomoc').value;
+
+        if (!datum || !cisloMatky) { alert("Vyplňte dátum a číslo!"); return; }
+
+        try {
+            await addDoc(colRef, {
+                datum, typMatky, cisloMatky, pohlavieTeliatka,
+                pomoc: pomoc.trim() || "-",
+                vytvorene: Date.now()
+            });
+            document.getElementById('cisloMatky').value = "";
+            document.getElementById('pomoc').value = "";
+        } catch (e) { alert("Chyba pri ukladaní: " + e); }
+    });
+
+    // NAČÍTANIE DÁT V REÁLNOM ČASE
+    const q = query(colRef, orderBy("datum", "desc"));
+    onSnapshot(q, (snapshot) => {
+        let zaznamy = [];
+        snapshot.docs.forEach(doc => zaznamy.push({ ...doc.data(), id: doc.id }));
+        window.aktualneZaznamy = zaznamy; // Pre export
+        vykresliData(zaznamy);
+    });
+
+    function vykresliData(zaznamy) {
+        const teloTabulky = document.getElementById('teloTabulky');
+        const summaryContent = document.getElementById('summaryContent');
+        teloTabulky.innerHTML = "";
+        
+        let b_celkovo = 0, j_celkovo = 0, stats = {};
+
+        zaznamy.forEach(z => {
+            const d = new Date(z.datum);
+            const rok = d.getFullYear();
+            const mesiac = d.getMonth();
+            const jeBycek = z.pohlavieTeliatka.includes("Býček");
+
+            if(jeBycek) b_celkovo++; else j_celkovo++;
+            if(!stats[rok]) stats[rok] = { mesiace: {} };
+            if(!stats[rok].mesiace[mesiac]) stats[rok].mesiace[mesiac] = { b: 0, j: 0 };
+            if(jeBycek) stats[rok].mesiace[mesiac].b++; else stats[rok].mesiace[mesiac].j++;
+
+            const fd = `${d.getDate().toString().padStart(2,'0')}.${(mesiac+1).toString().padStart(2,'0')}.${rok}`;
+            teloTabulky.innerHTML += `<tr>
+                <td>${fd}</td><td>${z.cisloMatky} (${z.typMatky[0]})</td>
+                <td class="${jeBycek ? 'male' : 'female'}">${jeBycek ? '♂' : '♀'}</td>
+                <td>${z.pomoc}</td>
+                <td><button class="delete-btn" data-id="${z.id}">X</button></td>
+            </tr>`;
+        });
+
+        // Eventy pre mazanie
+        document.querySelectorAll('.delete-btn').forEach(btn => {
+            btn.onclick = async (e) => {
+                if(confirm("Vymazať?")) await deleteDoc(doc(db, "otelenia", e.target.dataset.id));
+            };
+        });
+
+        // Sumáre
+        let summaryHTML = `<div class="summary-row summary-header"><div>Mesiac</div><div>♂</div><div>♀</div><div>Spolu</div></div>`;
+        Object.keys(stats).sort((a,b)=>b-a).forEach(rok => {
+            summaryHTML += `<div class="year-header">Rok ${rok}</div>`;
+            Object.keys(stats[rok].mesiace).sort((a,b)=>b-a).forEach(m => {
+                const s = stats[rok].mesiace[m];
+                summaryHTML += `<div class="summary-row"><div>${mesiaceSk[m]}</div><div class="male">${s.b}</div><div class="female">${s.j}</div><div style="font-weight:bold">${s.b+s.j}</div></div>`;
+            });
+        });
+        summaryContent.innerHTML = summaryHTML || "Žiadne dáta";
+        document.getElementById('countBycek').innerText = b_celkovo;
+        document.getElementById('countJalovicka').innerText = j_celkovo;
+    }
+
+    // Export funkcia
+    window.exportujCSV = () => {
+        const zaznamy = window.aktualneZaznamy || [];
+        if(!zaznamy.length) return;
+        let csv = "Datum;Matka;Cislo;Pohlavie;Pomoc\n";
+        zaznamy.forEach(z => csv += `${z.datum};${z.typMatky};${z.cisloMatky};${z.pohlavieTeliatka};${z.pomoc}\n`);
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.setAttribute("download", "telenie_RD_Cerenany.csv");
+        link.click();
+    };
+</script>
+</body>
+</html>
