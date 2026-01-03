@@ -21,6 +21,11 @@
             max-width: 650px; margin: 10px auto; background: rgba(255, 255, 255, 0.96); 
             padding: 20px; border-radius: 15px; box-shadow: 0 4px 20px rgba(0,0,0,0.4); 
         }
+        #loginOverlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 1000;
+        }
+        .login-box { background: white; padding: 30px; border-radius: 15px; text-align: center; width: 80%; max-width: 350px; }
         h2, h3 { text-align: center; color: #1a5276; margin-top: 0; border-bottom: 2px solid #1a5276; padding-bottom: 10px; }
         .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
         .stat-card { background: #f0f7ff; padding: 12px; border-radius: 8px; text-align: center; border: 1px solid #cce5ff; }
@@ -34,6 +39,7 @@
         input, select { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; font-size: 16px; }
         .btn-save { width: 100%; padding: 14px; background-color: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold; margin-bottom: 8px; }
         .btn-export { width: 100%; padding: 10px; background-color: #34495e; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; margin-bottom: 5px; }
+        .btn-logout { background: none; border: none; color: #7f8c8d; text-decoration: underline; font-size: 12px; cursor: pointer; margin-top: 20px; display: block; width: 100%; }
         .table-container { overflow-x: auto; }
         table { width: 100%; border-collapse: collapse; margin-top: 10px; background: white; font-size: 12px; min-width: 400px; }
         th, td { border: 1px solid #dee2e6; padding: 8px; text-align: center; }
@@ -45,8 +51,17 @@
 </head>
 <body>
 
+<div id="loginOverlay">
+    <div class="login-box">
+        <h3>Identifikátor farmy</h3>
+        <p style="font-size: 13px; color: #666;">Zadajte kód svojej farmy (napr. cerenany). Kód slúži na oddelenie vašich dát.</p>
+        <input type="text" id="farmaInput" placeholder="Kód farmy..." style="margin-bottom: 15px;">
+        <button class="btn-save" onclick="loginFarma()">Vstúpiť</button>
+    </div>
+</div>
+
 <div class="container">
-    <h2>RD Čereňany - telenie</h2>
+    <h2>RD Čereňany - <span id="displayFarma">...</span></h2>
 
     <div class="stats-grid">
         <div class="stat-card"><h4>Celkom Býčkov</h4><span id="countBycek">0</span></div>
@@ -76,7 +91,7 @@
         <input type="text" id="pomoc" placeholder="Meno asistenta">
     </div>
 
-    <button class="btn-save" id="saveBtn">Uložiť do online databázy</button>
+    <button class="btn-save" id="saveBtn">Uložiť záznam</button>
     <button class="btn-export" onclick="exportujCSV()">Export do Excelu (CSV)</button>
 
     <div class="summary-title">Mesačné prehľady:</div>
@@ -89,11 +104,13 @@
             <tbody id="teloTabulky"></tbody>
         </table>
     </div>
+
+    <button class="btn-logout" onclick="logoutFarma()">Zmeniť farmu / Odhlásiť</button>
 </div>
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-    import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, query, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, query, orderBy, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
     const firebaseConfig = {
         apiKey: "AIzaSyAm3OYkPyezf9E7yD7SNfq5GMAFiYD4Kqs",
@@ -106,12 +123,53 @@
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
-    const colRef = collection(db, "otelenia");
+    let colRef;
+    let unsubscribe = null;
 
-    document.getElementById('datum').valueAsDate = new Date();
+    const farmaKluc = "rd_cerenany_farma_id";
     const mesiaceSk = ["Január", "Február", "Marec", "Apríl", "Máj", "Jún", "Júl", "August", "September", "Október", "November", "December"];
 
-    // UKLADANIE DÁT
+    window.loginFarma = () => {
+        const id = document.getElementById('farmaInput').value.trim().toLowerCase();
+        if (id) {
+            localStorage.setItem(farmaKluc, id);
+            initApp(id);
+        }
+    };
+
+    window.logoutFarma = () => {
+        if(confirm("Naozaj sa chcete odhlásiť z tejto farmy?")) {
+            localStorage.removeItem(farmaKluc);
+            location.reload();
+        }
+    };
+
+    function initApp(farmaId) {
+        document.getElementById('loginOverlay').style.display = 'none';
+        document.getElementById('displayFarma').innerText = farmaId;
+        
+        // Pripojenie ku konkrétnej pod-kolekcii farmy
+        colRef = collection(db, "farmy", farmaId, "zaznamy");
+        
+        if (unsubscribe) unsubscribe();
+        
+        const q = query(colRef, orderBy("datum", "desc"));
+        unsubscribe = onSnapshot(q, (snapshot) => {
+            let zaznamy = [];
+            snapshot.docs.forEach(doc => zaznamy.push({ ...doc.data(), id: doc.id }));
+            window.aktualneZaznamy = zaznamy;
+            vykresliData(zaznamy);
+        });
+    }
+
+    // Skontroluj, či už je farma uložená
+    const ulozenaFarma = localStorage.getItem(farmaKluc);
+    if (ulozenaFarma) {
+        initApp(ulozenaFarma);
+    }
+
+    document.getElementById('datum').valueAsDate = new Date();
+
     document.getElementById('saveBtn').addEventListener('click', async () => {
         const datum = document.getElementById('datum').value;
         const typMatky = document.getElementById('typMatky').value;
@@ -119,7 +177,7 @@
         const pohlavieTeliatka = document.getElementById('pohlavieTeliatka').value;
         const pomoc = document.getElementById('pomoc').value;
 
-        if (!datum || !cisloMatky) { alert("Vyplňte dátum a číslo!"); return; }
+        if (!datum || !cisloMatky) { alert("Vyplňte údaje!"); return; }
 
         try {
             await addDoc(colRef, {
@@ -129,16 +187,7 @@
             });
             document.getElementById('cisloMatky').value = "";
             document.getElementById('pomoc').value = "";
-        } catch (e) { alert("Chyba pri ukladaní: " + e); }
-    });
-
-    // NAČÍTANIE DÁT V REÁLNOM ČASE
-    const q = query(colRef, orderBy("datum", "desc"));
-    onSnapshot(q, (snapshot) => {
-        let zaznamy = [];
-        snapshot.docs.forEach(doc => zaznamy.push({ ...doc.data(), id: doc.id }));
-        window.aktualneZaznamy = zaznamy; // Pre export
-        vykresliData(zaznamy);
+        } catch (e) { alert("Chyba: " + e); }
     });
 
     function vykresliData(zaznamy) {
@@ -168,14 +217,13 @@
             </tr>`;
         });
 
-        // Eventy pre mazanie
+        // Eventy mazania
         document.querySelectorAll('.delete-btn').forEach(btn => {
             btn.onclick = async (e) => {
-                if(confirm("Vymazať?")) await deleteDoc(doc(db, "otelenia", e.target.dataset.id));
+                if(confirm("Vymazať?")) await deleteDoc(doc(db, "farmy", localStorage.getItem(farmaKluc), "zaznamy", e.target.dataset.id));
             };
         });
 
-        // Sumáre
         let summaryHTML = `<div class="summary-row summary-header"><div>Mesiac</div><div>♂</div><div>♀</div><div>Spolu</div></div>`;
         Object.keys(stats).sort((a,b)=>b-a).forEach(rok => {
             summaryHTML += `<div class="year-header">Rok ${rok}</div>`;
@@ -189,7 +237,6 @@
         document.getElementById('countJalovicka').innerText = j_celkovo;
     }
 
-    // Export funkcia
     window.exportujCSV = () => {
         const zaznamy = window.aktualneZaznamy || [];
         if(!zaznamy.length) return;
@@ -198,7 +245,7 @@
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement("a");
         link.href = URL.createObjectURL(blob);
-        link.setAttribute("download", "telenie_RD_Cerenany.csv");
+        link.setAttribute("download", `telenie_${localStorage.getItem(farmaKluc)}.csv`);
         link.click();
     };
 </script>
